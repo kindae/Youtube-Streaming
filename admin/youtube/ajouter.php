@@ -1,462 +1,125 @@
 <?php
+require_once __DIR__ . "/inc/bootstrap.php";
 
-require_once "auth.php";
+$liens = '';
+$categorie = '';
+$erreurs = [];
 
-require_once "../../config/database.php";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifierCsrf();
 
-require_once "../../config/youtube_functions.php";
+    $liens = (string) ($_POST['liens'] ?? '');
+    $categorie = mb_substr(trim((string) ($_POST['categorie'] ?? '')), 0, 100);
+    $statut = isset($_POST['publie']) ? 'publie' : 'brouillon';
 
-
-$message = "";
-
-$erreur = "";
-
-
-if (
-    $_SERVER["REQUEST_METHOD"]
-    === "POST"
-) {
-
-    $lien =
-        trim(
-            $_POST["lien"]
-            ?? ""
-        );
-
-
-    $categorie =
-        trim(
-            $_POST["categorie"]
-            ?? ""
-        );
-
-
-    $vedette =
-        isset(
-            $_POST["vedette"]
-        )
-        ? 1
-        : 0;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | VÉRIFIER LE LIEN
-    |--------------------------------------------------------------------------
-    */
-
-    if (
-        empty($lien)
-    ) {
-
-        $erreur =
-            "Veuillez entrer un lien YouTube.";
-
-    } else {
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | EXTRAIRE ID
-        |--------------------------------------------------------------------------
-        */
-
-        $youtube_id =
-            extraireYoutubeId(
-                $lien
-            );
-
-
-        if (
-            !$youtube_id
-        ) {
-
-            $erreur =
-                "Le lien YouTube est invalide.";
-
+    // Un lien (ou ID) par ligne, virgule ou espace
+    $ids = [];
+    $invalides = [];
+    foreach (preg_split('/[\s,]+/', $liens, -1, PREG_SPLIT_NO_EMPTY) as $morceau) {
+        $id = extraireIdYoutube($morceau);
+        if ($id) {
+            $ids[] = $id;
         } else {
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | VÉRIFIER DOUBLON
-            |--------------------------------------------------------------------------
-            */
-
-            $stmt =
-                $pdo->prepare("
-
-                    SELECT id
-
-                    FROM youtube_videos
-
-                    WHERE youtube_id = ?
-
-                    LIMIT 1
-
-                ");
-
-
-            $stmt->execute([
-
-                $youtube_id
-
-            ]);
-
-
-            if (
-                $stmt->fetch()
-            ) {
-
-                $erreur =
-                    "Cette vidéo existe déjà.";
-
-            } else {
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | API YOUTUBE
-                |--------------------------------------------------------------------------
-                */
-
-                $data =
-                    recupererVideoYouTube(
-                        $youtube_id
-                    );
-
-
-                if (
-                    !$data
-                    ||
-                    empty(
-                        $data["success"]
-                    )
-                ) {
-
-                    $erreur =
-                        $data["error"]
-                        ??
-                        "Impossible de récupérer les informations.";
-
-                } else {
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | GESTION VEDETTE
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if (
-                        $vedette == 1
-                    ) {
-
-                        $pdo->exec("
-
-                            UPDATE youtube_videos
-
-                            SET vedette = 0
-
-                        ");
-
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | INSERTION
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $stmt =
-                        $pdo->prepare("
-
-                            INSERT INTO youtube_videos (
-
-                                youtube_id,
-
-                                titre,
-
-                                description,
-
-                                miniature,
-
-                                date_youtube,
-
-                                duree,
-
-                                vues_youtube,
-
-                                likes_youtube,
-
-                                commentaires_youtube,
-
-                                categorie,
-
-                                vedette,
-
-                                statut,
-
-                                date_ajout,
-
-                                derniere_sync
-
-                            )
-
-                            VALUES (
-
-                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'publie', NOW(), NOW()
-
-                            )
-
-                        ");
-
-
-                    $stmt->execute([
-
-                        $youtube_id,
-
-                        $data["titre"],
-
-                        $data["description"],
-
-                        $data["miniature"],
-
-                        $data["date_youtube"],
-
-                        $data["duree"],
-
-                        $data["vues_youtube"],
-
-                        $data["likes_youtube"],
-
-                        $data["commentaires_youtube"],
-
-                        $categorie,
-
-                        $vedette
-
-                    ]);
-
-
-                    $message =
-                        "✅ Vidéo ajoutée avec succès !";
-
-                }
-
+            $invalides[] = $morceau;
+        }
+    }
+    $ids = array_values(array_unique($ids));
+
+    if (!$ids) {
+        $erreurs[] = "Collez au moins un lien YouTube valide.";
+    } else {
+        try {
+            modifierExclusions([], $ids);
+            [$ajoutees, $ignorees] = importerVideos($pdo, $ids, $categorie, $statut, false);
+            $introuvables = array_diff($ids, $ajoutees, $ignorees);
+
+            if ($ajoutees) {
+                flash(count($ajoutees) . " vidéo" . (count($ajoutees) > 1 ? "s ajoutées" : " ajoutée") . ".");
+            }
+            if ($ignorees) {
+                flash(count($ignorees) . " déjà présente" . (count($ignorees) > 1 ? "s" : "") . " sur le site.", 'info');
+            }
+            if ($introuvables) {
+                flash("Introuvable(s) sur YouTube (privée ou supprimée) : " . implode(', ', $introuvables), 'error');
+            }
+            if ($invalides) {
+                flash("Liens non reconnus : " . implode(', ', array_slice($invalides, 0, 5)), 'error');
             }
 
+            if (count($ajoutees) === 1) {
+                $stmt = $pdo->prepare("SELECT id FROM youtube_videos WHERE youtube_id = ?");
+                $stmt->execute([$ajoutees[0]]);
+                rediriger("modifier.php?id=" . (int) $stmt->fetchColumn());
+            }
+            rediriger($ajoutees ? "videos.php?tri=ajout" : "ajouter.php");
+        } catch (Throwable $e) {
+            $erreurs[] = $e->getMessage();
         }
-
     }
-
 }
 
+$categories = listeCategories($pdo);
+$titre_page = "Ajouter des vidéos";
+$page_active = 'ajouter';
+require __DIR__ . "/inc/header.php";
 ?>
 
+<header class="page-head">
+    <div>
+        <h1>Ajouter des vidéos</h1>
+        <p class="muted">Collez un ou plusieurs liens YouTube : titre, miniature, durée et statistiques sont récupérés automatiquement.</p>
+    </div>
+</header>
 
-<!DOCTYPE html>
+<?php foreach ($erreurs as $err): ?>
+    <div class="alert alert-error"><?= e($err) ?></div>
+<?php endforeach; ?>
 
-<html lang="fr">
+<div class="edit-layout">
+    <form method="post" class="card form" data-loading="Importation…">
+        <?= csrfChamp() ?>
 
-<head>
+        <label class="field">
+            <span>Liens YouTube</span>
+            <textarea name="liens" rows="6" required autofocus
+                      placeholder="https://www.youtube.com/watch?v=…&#10;https://youtu.be/…&#10;https://www.youtube.com/shorts/…"><?= e($liens) ?></textarea>
+            <small class="hint">Un lien par ligne. Les liens « watch », « youtu.be », « shorts » et « live » sont acceptés.</small>
+        </label>
 
-<meta charset="UTF-8">
+        <div class="link-preview" hidden></div>
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+        <label class="field">
+            <span>Catégorie <em class="muted">(facultatif)</em></span>
+            <input type="text" name="categorie" value="<?= e($categorie) ?>" list="liste-categories" placeholder="Ex. Sketch" maxlength="100">
+        </label>
+        <datalist id="liste-categories">
+            <?php foreach ($categories as $c): ?><option value="<?= e($c['categorie']) ?>"><?php endforeach; ?>
+        </datalist>
 
-<title>
-Ajouter une vidéo
-</title>
+        <div class="toggles">
+            <label class="toggle">
+                <input type="checkbox" name="publie" checked>
+                <span class="switch"></span>
+                <span><strong>Publier immédiatement</strong><small>Sinon la vidéo est ajoutée en mode masqué.</small></span>
+            </label>
+        </div>
 
-<style>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Ajouter</button>
+        </div>
+    </form>
 
-body {
-
-    margin: 0;
-
-    padding: 20px;
-
-    background: #f5f5f5;
-
-    font-family: Arial;
-
-}
-
-.container {
-
-    max-width: 600px;
-
-    margin: auto;
-
-    background: white;
-
-    padding: 30px;
-
-    border-radius: 15px;
-
-}
-
-input {
-
-    width: 100%;
-
-    padding: 14px;
-
-    margin: 8px 0 20px;
-
-    box-sizing: border-box;
-
-}
-
-button {
-
-    width: 100%;
-
-    padding: 14px;
-
-    background: #e00000;
-
-    color: white;
-
-    border: none;
-
-    cursor: pointer;
-
-}
-
-.message {
-
-    background: #e8f5e9;
-
-    color: #2e7d32;
-
-    padding: 12px;
-
-    margin-bottom: 20px;
-
-}
-
-.erreur {
-
-    background: #ffebee;
-
-    color: #c62828;
-
-    padding: 12px;
-
-    margin-bottom: 20px;
-
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-<a href="index.php">
-← Retour
-</a>
-
-<h1>
-➕ Ajouter une vidéo
-</h1>
-
-<?php if (!empty($message)): ?>
-
-<div class="message">
-
-<?= htmlspecialchars(
-    $message
-) ?>
-
+    <aside class="edit-side">
+        <div class="card">
+            <h2 class="card-title">💡 Astuce</h2>
+            <p class="muted">Les nouvelles vidéos de la chaîne sont ajoutées automatiquement par la synchronisation.
+                Utilisez cette page pour une vidéo d'une autre chaîne, ou pour ne pas attendre.</p>
+            <form method="post" action="synchroniser.php" data-loading="Synchronisation…">
+                <?= csrfChamp() ?>
+                <button class="btn btn-ghost btn-block">↻ Synchroniser la chaîne maintenant</button>
+            </form>
+        </div>
+    </aside>
 </div>
 
-<?php endif; ?>
-
-
-<?php if (!empty($erreur)): ?>
-
-<div class="erreur">
-
-<?= htmlspecialchars(
-    $erreur
-) ?>
-
-</div>
-
-<?php endif; ?>
-
-
-<form method="POST">
-
-<label>
-Lien YouTube
-</label>
-
-<input
-
-    type="url"
-
-    name="lien"
-
-    placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX"
-
-    required
-
->
-
-
-<label>
-Catégorie
-</label>
-
-<input
-
-    type="text"
-
-    name="categorie"
-
-    placeholder="Actualité, Sport, Éducation..."
-
->
-
-
-<label>
-
-<input
-
-    type="checkbox"
-
-    name="vedette"
-
-    value="1"
-
->
-
-⭐ Mettre à la une
-
-</label>
-
-<br><br>
-
-<button type="submit">
-
-🎬 Ajouter automatiquement
-
-</button>
-
-</form>
-
-</div>
-
-</body>
-
-</html>
+<?php require __DIR__ . "/inc/footer.php"; ?>

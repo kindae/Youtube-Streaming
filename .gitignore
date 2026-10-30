@@ -1,3 +1,4 @@
 config/secrets.php
 .DS_Store
 config/youtube_sync.log
+config/videos_exclues.json

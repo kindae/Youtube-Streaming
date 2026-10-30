@@ -9,7 +9,8 @@ Site vitrine de la chaîne YouTube **Congonet 24 +** : les vidéos se regardent 
 | `index.php` | Accueil : chaîne, vidéo à la une (lecture sur place), les plus vues, liste avec catégories, tri, recherche et « Afficher plus » |
 | `watch.php?v=ID` | Lecteur intégré, description (liens et horodatages cliquables), partage (WhatsApp, Facebook, X, Telegram, copier le lien), « À suivre » et lecture automatique de la vidéo suivante |
 | `api.php` | Suggestions de recherche en direct (JSON) |
-| `admin/youtube/` | Administration (inchangée, code d'accès déplacé dans `config/secrets.php`) |
+| `admin/youtube/` | Administration « Studio » : tableau de bord, vidéos (recherche, filtres, actions groupées), ajout par lien, catégories, synchronisation |
+| `admin/youtube/youtube_sync.php` | Synchronisation pour le cron (logique dans `config/youtube_sync_lib.php`) |
 | `youtube/index.php` | Ancienne adresse, redirige vers l'accueil |
 
 ## Installation
