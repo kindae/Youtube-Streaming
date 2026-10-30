@@ -1,0 +1,40 @@
+name: Déploiement FTP
+
+# Déploie automatiquement à chaque push sur main,
+# ou à la demande (onglet Actions > Déploiement FTP > Run workflow, sur n'importe quelle branche).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ftp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Vérifier la syntaxe PHP
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Envoyer les fichiers par FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR || './' }}
+          # config/secrets.php reste uniquement sur le serveur : il n'est jamais envoyé ni supprimé
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            README.md
+            medias_deepakpk009.json
+            config/secrets.php

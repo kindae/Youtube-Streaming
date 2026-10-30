@@ -20,3 +20,21 @@ Site vitrine de la chaîne YouTube **Congonet 24 +** : les vidéos se regardent 
 `config/secrets.php` est ignoré par Git : les mots de passe ne sont jamais publiés.
 
 Le nom, la description, le logo et le lien de la chaîne se modifient dans `includes/app.php` (`$site`).
+
+## Déploiement automatique (FTP)
+
+Le workflow `.github/workflows/deploy-ftp.yml` envoie le site par FTP à chaque push sur `main`
+(ou à la demande : onglet **Actions → Déploiement FTP → Run workflow**). Seuls les fichiers modifiés sont envoyés.
+
+Secrets à créer dans **Settings → Secrets and variables → Actions → New repository secret** :
+
+| Secret | Exemple | Obligatoire |
+|---|---|---|
+| `FTP_SERVER` | `ftp.congonet24.com` ou l'IP FTP de l'hébergeur | oui |
+| `FTP_USERNAME` | `u307569160.plus` | oui |
+| `FTP_PASSWORD` | mot de passe FTP | oui |
+| `FTP_SERVER_DIR` | `/domains/congonet24.com/public_html/plus/` (doit finir par `/`) | non (par défaut `./`, le dossier racine du compte FTP) |
+| `FTP_PROTOCOL` | `ftps` ou `ftp` | non (par défaut `ftps`) |
+| `FTP_PORT` | `21` | non |
+
+`config/secrets.php` n'est jamais envoyé : déposez-le une seule fois sur le serveur (gestionnaire de fichiers de l'hébergeur).
