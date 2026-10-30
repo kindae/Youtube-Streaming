@@ -21,6 +21,7 @@ if (!defined('APP_SECRETS_LOADED')) {
     define('DB_PASS', $secrets['db_pass'] ?? '');
     define('YOUTUBE_API_KEY', $secrets['youtube_api_key'] ?? '');
     define('ADMIN_CODE', (string) ($secrets['admin_code'] ?? ''));
+    define('CRON_TOKEN', (string) ($secrets['cron_token'] ?? ''));
 
     unset($secrets, $fichier_secrets);
 }

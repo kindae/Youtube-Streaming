@@ -13,4 +13,6 @@ return [
     'db_pass'         => 'mot_de_passe',
     'youtube_api_key' => 'VOTRE_CLE_API_YOUTUBE',
     'admin_code'      => 'CODE_ADMIN',
+    // Jeton du cron : youtube_sync.php?token=... (laisser vide pour ne pas l'exiger)
+    'cron_token'      => '',
 ];
