@@ -4,7 +4,7 @@ name: Déploiement FTP
 # ou à la demande (onglet Actions > Déploiement FTP > Run workflow, sur n'importe quelle branche).
 on:
   push:
-    branches: [main]
+    branches: [main, ccr-c1ab4764-gy9q3s]
   workflow_dispatch:
 
 concurrency:
